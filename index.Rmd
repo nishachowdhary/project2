@@ -46,92 +46,212 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Name and EID here
+## Nisha Chowdhary (nac2375)
 
 ### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
+The data I am using for this project is called candy_rankings, and has to do with candy and its ranking/popularity. The variables include chocolate, fruity, caramel, bar, etc. and are binary variables essentially asking is it chocolate? Fruity? Does it have caramel in it? Etc. Then there are variables such as its sugar percentage (the proportion of sugar it falls under within the data set), its price percentage (the unit price proportion compared to the rest of the set), and its win percent (the overall win percentage according to 269,000 match ups.) I am going to use this data to determine what types of candy the people enjoy most and what they think makes for a "good" piece of candy.
 
 ```{R}
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
-
-# if your dataset needs tidying, do so here
-
-# any other code here
+library(fivethirtyeight)
+candy <- candy_rankings
 ```
 
 ### Cluster Analysis
 
 ```{R}
+candy_numeric <- candy %>% select_if(is.numeric)
 library(cluster)
-# clustering code here
+sil_width<-vector() 
+for(i in 2:10){
+kms <- kmeans(candy_numeric,centers=i) 
+sil <- silhouette(kms$cluster,dist(candy_numeric)) 
+sil_width[i]<-mean(sil[,3]) 
+}
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10)
+
+candy_pam <- candy_numeric %>% pam(k=2)
+plot(candy_pam, which =2)
+
+candy_pam1 <- candy_numeric %>% scale %>% pam(k=2)
+candy_pam1
+
 ```
 
-Discussion of clustering here
-    
+The cluster solution (I chose two clusters because it had the highest silhouette width of 0.59) looks like a reasonable structure for this data. The two candies that are the medoids are Snickers Crisper (ID 66) and Werther's Original Caramel (ID 84). It looks like they are somewhat different on all three of the variables.
+
+```{R}
+library(GGally)
+final <- candy_numeric %>% mutate(cluster=as.factor(candy_pam$clustering)) 
+final %>% ggpairs(columns = 1:3, aes(color = cluster)) 
+```
+    The variable that shows the greatest difference between clusters is the "winpercent" and the variable that is most similar between the two clusters is "sugarpercent". Cluster one appears to have a higher percentage, on average, for each of the three variables.
     
 ### Dimensionality Reduction with PCA
 
 ```{R}
-# PCA code here
+princomp(candy_numeric, cor=T) -> pca1
+eigval <- pca1$sdev^2
+round(cumsum(eigval)/sum(eigval), 2)
+
+summary(pca1, loadings=T)
+data <- as.data.frame(pca1$scores) %>% mutate(general = candy_numeric$winpercent) 
+data %>% ggplot(aes(Comp.1, Comp.2, color=general)) + geom_point() + scale_colour_gradient(low = "black", high = "white")
+
+cor(data$general, data$Comp.1)
+cor(data$general, data$Comp.2)
 ```
 
-Discussions of PCA here. 
+PC1 makes up 54 percent of the total variance. PC1 and PC2 make up 79% of the total variance. For each column if a variable is positive and another variable is negative then those are inversely correlated, so if the percent is high for one, then the other one would most likely have a low percentage and vice versa. For example, for PC3 if you score well on it, it's likely that if the win percent is high then the price percent is low. For PC2 if the sugar percent is high then the win percent is more likely to be low. Additionally, from the graph we can see that there is a semi-strong positive correlation between win percent and score of PC1 (0.71). There is a little negative correlation between win percent and PC2 (-0.5933).
 
 ###  Linear Classifier
 
 ```{R}
 # linear classifier code here
+fit <- glm(chocolate=="TRUE" ~ sugarpercent + pricepercent + winpercent, data=candy, family="binomial")
+prob_reg <- predict(fit)
+class_diag(prob_reg, candy$chocolate, positive = "TRUE")
+
+#confusion matrix
+table(truth= factor(candy$chocolate=="TRUE", levels=c("TRUE","FALSE")),
+  prediction= factor(prob_reg[]>.5, levels=c("TRUE","FALSE"))) %>% addmargins
 ```
+
+I used a logistic regression fit for this section to see how well we can predict weather a candy contains chocolate or not based on all the numeric variables. With an AUC of 0.9105, the model is performing rather well for all the observations. From the confusion matrix, we can see that there is a true positive rate of 0.757, a true negative rate of 0.9375, and a positive predictive value of 0.903.
 
 ```{R}
-# cross-validation of linear classifier here
+set.seed(322)
+k=10
+
+data<-sample_frac(candy) #randomly order rows
+folds <- rep(1:k, length.out=nrow(data)) #create folds
+
+diags<-NULL
+
+i=1
+for(i in 1:k){
+# create training and test sets
+train<-data[folds!=i,] 
+test<-data[folds==i,] 
+truth<-test$chocolate
+
+# train model
+fit <- glm(chocolate=="TRUE" ~ sugarpercent + pricepercent + winpercent, data=train, family="binomial")### SPECIFY THE LOGISTIC REGRESSION MODEL FIT TO THE TRAINING SET HERE
+
+# test model
+probs <- predict(fit, newdata = test, type="response")### GET PREDICTIONS FROM THE TRAINED MODEL ON THE TEST SET HERE
+
+# get performance metrics for each fold
+diags<-rbind(diags, class_diag(probs, truth, positive = "TRUE")) }
+
+#average performance metrics across all folds
+summarize_all(diags,mean)
 ```
 
-Discussion here
+We can see that the AUC has gone up 0.9105 to 0.9329, which means that there are not signs of over-fitting and the model is predicting new observations well.
 
 ### Non-Parametric Classifier
 
 ```{R}
 library(caret)
-# non-parametric classifier code here
+knn_fit <- knn3(factor(chocolate=="TRUE",levels=c("TRUE","FALSE")) ~ candy$sugarpercent + candy$pricepercent + candy$winpercent, k=5, data = candy)
+y_hat_knn <- predict(knn_fit, candy)
+class_diag(y_hat_knn[,1], candy$chocolate, positive="TRUE")
+
+
+#confusion matrix
+table(truth= factor(candy$chocolate=="TRUE", levels=c("TRUE","FALSE")),
+  prediction= factor(y_hat_knn[,1]>.5, levels=c("TRUE","FALSE"))) %>% addmargins
 ```
+
+From the confusion matrix we can see that with a knn model there is a predicted positive rate of 0.8788 (also seen from the class_diag function). The AUC is 0.9223 which means the model is performing well.
 
 ```{R}
-# cross-validation of np classifier here
+set.seed(322)
+k=10
+
+data<-sample_frac(candy) #randomly order rows
+folds <- rep(1:k, length.out=nrow(data)) #create folds
+
+diags<-NULL
+
+i=1
+for(i in 1:k){
+# create training and test sets
+train<-data[folds!=i,] 
+test<-data[folds==i,] 
+truth<-test$chocolate
+
+# train model
+fit <- knn3(chocolate=="TRUE" ~ sugarpercent + pricepercent + winpercent, data=train, )
+# test model
+probs <- predict(fit,newdata = test)[,2]
+
+# get performance metrics for each fold
+diags<-rbind(diags,class_diag(probs,truth, positive = "TRUE")) }
+
+#average performance metrics across all folds
+summarize_all(diags,mean)
 ```
 
-Discussion
+Unfortunately, the AUC has gone down, which means that the model is not doing as good of a job at predicting if a candy is chocolate or not for new samples. This also implies that there are signs of over-fitting. Clearly, the linear model does a better job than the non-parametric model in its cross-validation performance.
 
 
 ### Regression/Numeric Prediction
 
 ```{R}
-# regression model code here
+fit<-lm(winpercent~-competitorname,data=candy) 
+yhat<-predict(fit)
+mean((candy$winpercent-yhat)^2) #mean squared error (MSE)
+
 ```
 
 ```{R}
-# cross-validation of regression model here
+library(dplyr)
+set.seed(1234)
+k=5 #choose number of folds
+data<-sample_frac(candy%>%select(-competitorname)) #randomly order rows
+folds <- rep(1:k, length.out=nrow(data)) #create folds
+diags<-NULL
+for(i in 1:k){
+train<-data[folds!=i,]
+test<-data[folds==i,]
+## Fit linear regression model to training set
+fit<-lm(winpercent~.,data=train)
+## Get predictions/y-hats on test set (fold i)
+yhat<-predict(fit,newdata=test)
+## Compute prediction error (MSE) for fold i
+diags<-mean((test$winpercent-yhat)^2)
+}
+mean(diags)
 ```
 
-Discussion
+For this model I based the fit on all the variables except for the competitor name. The mean squared error is really high for this model, which means that the model is not doing a very good job of predicting the win percentage, but it does decrease when performing cross-validation which indicates that there are no signs of over-fitting. 
 
 ### Python 
 
+```{python}
+import numpy as np
+candy = r.candy
+np.mean(candy['winpercent']) 
+max(candy['winpercent']) #recess peanut butter cup (also my favorite!)
+sugar = candy['sugarpercent']
+win = candy['winpercent']
+name = candy['competitorname']
+```
+I accessed the dataset from r using the r. function. Then I calculated the average win percentage for the entire dataset which resulted in a value of about 50.3. Next, I found the maximum win percentage which was around 84.18 percent. Finally I created vectors to access and use in the next part for the variables "sugarpercent", "winpercent", and "competitorname".
+
 ```{R}
 library(reticulate)
+sugar_name <- data.frame(sugar = py$sugar, name = py$name, win = py$win)
+glimpse(sugar_name %>% arrange(-sugar))
 ```
-
-```{python}
-# python code here
-```
-
-Discussion
+I created a mini dataset for the three variables I created in python to access in the R portion. I wanted to see what the highest proportion of sugar for the dataset was and what its win percentage was. Interestingly enough, the highest sugar proportion was Reese's stuffed with pieces with a win percentage of 72.8879, which is fairly higher than the average win percentage calculated in the above part.
 
 ### Concluding Remarks
 
-Include concluding remarks here, if any
+If I were to continue analyzing this data I would want to explore the relationship between win percentage and the other categorical variables individually a bit more. 
 
 
 

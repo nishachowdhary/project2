@@ -66,11 +66,11 @@ Again, you can use data from anywhere you want (see bottom for resources)! If yo
 
 - **1. Clustering (30 pts)** 
 
-    - Perform PAM clustering on at least three of your variables (3 is the bare minimum: using more/all of them will make this much more interesting)! Bonus point for incorporating at least one categorical variable and clustering based on gower dissimilarities.
+    - Perform PAM clustering on at least three of your variables (3 is the bare minimum: using more/all of them will make this much more interesting)! Bonus point for incorporating at least one categorical variable and clustering based on gower dissimilarities. DONE
 
-    - All relevant steps discussed in class (e.g., picking number of clusters based on largest average silhouette width)
+    - All relevant steps discussed in class (e.g., picking number of clusters based on largest average silhouette width) DONE
    
-    - Visualize the clusters by showing all pairwise combinations of variables colored by cluster assignment (using ggpairs)
+    - Visualize the clusters by showing all pairwise combinations of variables colored by cluster assignment (using ggpairs) DONE
    
     - Include a paragraph or two describing results found, interpreting the clusters in terms of the original variables and observations, discussing goodness of fit of the cluster solution, etc.
 
